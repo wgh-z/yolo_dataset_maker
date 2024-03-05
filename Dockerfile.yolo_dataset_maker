@@ -1,0 +1,30 @@
+# docker run --rm --gpus all -it -v :/home/appuser/ -p : --name name name:latest
+
+FROM pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime
+FROM python:3.10-slim-buster
+
+# Arguments to build Docker Image using CUDA
+# ARG USE_CUDA=0
+# ARG TORCH_ARCH=
+
+# ENV AM_I_DOCKER True
+# ENV BUILD_WITH_CUDA "${USE_CUDA}"
+# ENV TORCH_CUDA_ARCH_LIST "${TORCH_ARCH}"
+# # ENV CUDA_HOME /usr/local/cuda-11.7/
+
+# ENV DEBIAN_FRONTEND=noninteractive
+
+RUN /bin/bash -c 'conda init bash'
+
+# 换源并更新pip
+RUN pip config set global.index-url https://pypi.mirrors.ustc.edu.cn/simple/
+RUN pip install --upgrade pip
+
+# 将原镜像地址替换为阿里云镜像地址
+RUN sed -i 's/archive.ubuntu.com/mirrors.cloud.tencent.com/g' /etc/apt/sources.list
+RUN sed -i 's/security.ubuntu.com/mirrors.cloud.tencent.com/g' /etc/apt/sources.list
+RUN apt update && apt install --no-install-recommends -y build-essential &&\
+    apt clean && apt autoremove && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /home/appuser/yolo_dataset_maker 
+WORKDIR /home/appuser/yolo_dataset_maker 
