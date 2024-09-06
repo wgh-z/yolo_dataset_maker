@@ -12,7 +12,7 @@ from utils.format_io import xml2txt, txt2xml
 from utils.tools import get_image_info
 
 
-class Data_process:
+class DatasetFormat:
     def __init__(
             self,
             dataset_path,
@@ -114,44 +114,26 @@ class Data_process:
 
         imgs = os.listdir(self.image_path)
         for img in tqdm(imgs):
-            # im = cv2.imread(os.path.join(self.image_path, img))
-            # img_h, img_w, img_c = im.shape
-
-            img_w, img_h, img_c = get_image_info(os.path.join(self.image_path, img))
-
             img_id = os.path.splitext(img)[0]
+            img_w, img_h, img_c = get_image_info(os.path.join(self.image_path, img))
             txt_to_xml(img_id, img_w, img_h, img_c)
-
-    def get_data(self, classes: list, file_data, annotation_type: str='voc', class_names=None) -> list:
-        if annotation_type == 'voc': # xml文件中每个object标签的格式为：<object><name>类别名</name></object>
-            tree = ET.parse(file_data)
-            root = tree.getroot()
-            for obj in root.iter('object'):
-                cls = obj.find('name').text
-                if cls not in classes:
-                    classes.append(cls)
-        elif annotation_type == 'yolo': # txt文件中每行的格式为：类别号 x1 y1 x2 y2
-            assert class_names is not None, 'class_names must be not None'
-            for line in file_data:
-                serial_number = line.strip().split(' ')[0]
-                cls = f'{serial_number}:{class_names[int(serial_number)]}'
-                if cls not in classes:
-                    classes.append(cls)
-        return classes
 
     def get_labels(self, annotation_type='voc'):
         """获取数据集中的类别和类别数"""
         assert annotation_type in ['voc', 'yolo'], 'annotation_type must be voc or yolo'
 
         if annotation_type == 'voc':
-            annotation_path = self.xml_path
-            class_names = None
             classes = []
-            file_list = os.listdir(annotation_path)  # 文件夹下所有文件的文件名列表
-            for file_name in file_list:
-                file_path = os.path.join(annotation_path, file_name)
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    classes = self.get_data(classes, f, annotation_type, class_names)
+            xmls = os.listdir(self.xml_path)  # 文件夹下所有文件的文件名列表
+            for xml_name in xmls:
+                tree = ET.parse(os.path.join(self.xml_path, xml_name))
+                root = tree.getroot()
+                # xml文件中每个object标签的格式为：<object><name>类别名</name></object>
+                for obj in root.iter('object'):
+                    cls = obj.find('name').text
+                    if cls not in classes:
+                        classes.append(cls)
+
         elif annotation_type == 'yolo':
             with open(os.path.join(self.dataset_path, 'classes.txt'), 'r', encoding='utf-8') as f:
                 classes = f.readlines()
@@ -215,7 +197,7 @@ class Data_process:
             f.write('\n# Classes\n')
             yaml.safe_dump(names, f, default_flow_style=False)
 
-    def data_formatting(self, train_ratio=0.7, val_ratio=0.2, seed=None, annotation_type='voc'):
+    def __call__(self, train_ratio=0.7, val_ratio=0.2, seed=None, annotation_type='voc'):
         """数据格式化"""
 
         classes = self.get_labels(annotation_type=annotation_type)
@@ -230,12 +212,16 @@ class Data_process:
 
 
 if __name__ == '__main__':
+    import time
     dataset_path = 'datasets/detention'
 
-    data_process = Data_process(dataset_path)
-    data_process.data_formatting(
+    data_process = DatasetFormat(dataset_path)
+    start = time.time()
+    data_process(
         train_ratio=0.7,
         val_ratio=0.2,
         seed=0,
         annotation_type='voc'
         )
+    end = time.time()
+    print(f'耗时{end-start}秒')
