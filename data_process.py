@@ -6,7 +6,6 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import xml.etree.ElementTree as ET
-# import shutil
 
 from utils.format_io import xyxy2xywhn
 
@@ -28,70 +27,6 @@ class Data_process:
         self.xml_label_path = os.path.join(self.dataset_path, xml_label_dir)
         self.txt_label_path = os.path.join(self.dataset_path, txt_label_dir)
         self.dataset_name = os.path.split(self.dataset_path)[-1]  # 获取数据集名
-
-    # def data_divide(self, train_ratio=0.7, val_ratio=0.2, seed=None):
-    #     """数据集划分"""
-    #     trainval_percent = round(train_ratio+val_ratio, 1)   # 训练校验集比例
-    #     print(f'训练集：{train_ratio}，校验集：{val_ratio}，测试集：{1-trainval_percent}')
-    #     # ori_img_path = f'{dataset_path}/images'
-    #     # txt_save_path = dir+'/ImageSets/'
-    #     # if not os.path.exists(txt_save_path):
-    #     #     os.makedirs(txt_save_path)
-    #     # total_xml = os.listdir(self.xml_label_path)
-    #     imgs = os.listdir(self.image_path)
-    #     bg_imgs = os.listdir(self.bg_path)
-
-    #     num = len(imgs)
-    #     num_bg = len(bg_imgs)
-    #     trainval_num = int(num * trainval_percent)  # 训练校验集数量
-    #     train_num = int(num * train_ratio)  # 训练集数量
-
-    #     if seed is not None:
-    #         random.seed(seed)
-    #     trainval = random.sample(range(num), trainval_num)  # 随机选取trainval_num数量的索引
-    #     train = random.sample(trainval, train_num)
-
-    #     # f_trainval = open(f'{dataset_path}/trainval.txt', 'w')
-    #     f_test = open(os.path.join(self.dataset_path, 'test.txt'), 'w')
-    #     f_train = open(os.path.join(self.dataset_path, 'train.txt'), 'w')
-    #     f_val = open(os.path.join(self.dataset_path, 'val.txt'), 'w')
-
-    #     # new_train_path = f'{ori_img_path}/train'
-    #     # new_val_path = f'{ori_img_path}/val'
-    #     # new_test_path = f'{ori_img_path}/test'
-
-    #     # # 创建train文件夹
-    #     # if not os.path.exists(new_train_path):
-    #     #     os.makedirs(new_train_path)
-    #     # # 创建val文件夹
-    #     # if not os.path.exists(new_val_path):
-    #     #     os.makedirs(new_val_path)
-    #     # # 创建test文件夹
-    #     # if not os.path.exists(new_test_path):
-    #     #     os.makedirs(new_test_path)
-
-    #     print('开始划分数据集。。。')
-    #     for i in tqdm(range(num)):
-    #         # xml_name = os.path.splitext(total_xml[i])[0]
-    #         image_id = os.path.splitext(imgs[i])[0]
-    #         # relative_path = f'./{self.image_dir}/{xml_name}.jpg\n'
-    #         relative_path = f'./{self.image_dir}/{image_id}.jpg\n'
-    #         # img_name = f'{xml_name}.jpg'
-    #         if i in trainval:
-    #             # f_trainval.write(relative_path)
-    #             if i in train:
-    #                 f_train.write(relative_path)
-    #                 # shutil.move(f'{dataset_path}{relative_path}', f'{dataset_path}/images/train/{xml_name}.jpg')
-    #             else:
-    #                 f_val.write(relative_path)
-    #                 # shutil.move(f'{dataset_path}{relative_path}', f'{dataset_path}/images/val/{xml_name}.jpg')
-    #         else:
-    #             f_test.write(relative_path)
-    #             # shutil.move(f'{dataset_path}{relative_path}', f'{dataset_path}/images/test/{xml_name}.jpg')
-
-    #     f_train.close()
-    #     f_val.close()
-    #     f_test.close()
 
     def data_divide(self, train_ratio=0.7, val_ratio=0.2, seed=None):
         """数据集划分"""
@@ -259,24 +194,6 @@ class Data_process:
             ymax.tail = '\n\t\t\t'
         tree = ET.ElementTree(root)
         tree.write(file_path, encoding='utf-8')
-
-    # def voc2yolo(self, classes):
-    #     classes_name = open(f'{self.dataset_path}/classes.txt', 'w', encoding='utf-8')
-    #     classes_name.write('\n'.join(classes))  # 保存为yolo格式类别文件
-    #     sets = ['train', 'test', 'val']
-
-    #     for image_set in sets:
-    #         if not os.path.exists(self.dataset_path+'/labels/'):
-    #             os.makedirs(self.dataset_path+'/labels/')
-    #         # 读取在train、test..等文件的内容
-    #         image_names = open(f'{self.dataset_path}/{image_set}.txt').read().strip().split('\n')
-    #         for image_name in image_names:
-    #             image_id = image_name.split('/')[-1].split('.')[0]  # 图片名不带后缀
-    #             try:
-    #                 self.xml2txt(image_id, classes)  # 生成labels文件夹下的txt
-    #             except:
-    #                 continue
-    #     print('转换完毕！！！')
 
     def voc2yolo(self, classes):
         """voc数据集转yolo格式"""
