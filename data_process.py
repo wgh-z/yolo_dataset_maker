@@ -1,13 +1,15 @@
 # 数据处理
 import os
+# import cv2
 import random
 import yaml
-import numpy as np
-from PIL import Image
+# import numpy as np
 from tqdm import tqdm
 import xml.etree.ElementTree as ET
+from functools import partial
 
-from utils.format_io import xyxy2xywhn
+from utils.format_io import xml2txt, txt2xml
+from utils.tools import get_image_info
 
 
 class Data_process:
@@ -22,10 +24,13 @@ class Data_process:
         self.dataset_path = dataset_path
         self.image_dir = image_dir
         self.bg_dir = background_dir
-        self.image_path = os.path.join(self.dataset_path, image_dir)
-        self.bg_path = os.path.join(self.dataset_path, background_dir)
-        self.xml_label_path = os.path.join(self.dataset_path, xml_label_dir)
-        self.txt_label_path = os.path.join(self.dataset_path, txt_label_dir)
+        self.xml_dir = xml_label_dir
+        self.txt_dir = txt_label_dir
+
+        self.image_path = os.path.join(self.dataset_path, self.image_dir)
+        self.bg_path = os.path.join(self.dataset_path, self.bg_dir)
+        self.xml_path = os.path.join(self.dataset_path, self.xml_dir)
+        self.txt_path = os.path.join(self.dataset_path, self.txt_dir)
         self.dataset_name = os.path.split(self.dataset_path)[-1]  # 获取数据集名
 
     def data_divide(self, train_ratio=0.7, val_ratio=0.2, seed=None):
@@ -75,176 +80,47 @@ class Data_process:
                 for img in imgs:
                     f.write(img)
 
-    def xml2txt(self, img_id, classes:list):
-        try:
-            tree = ET.parse(f'{self.xml_label_path}/{img_id}.xml')  # 解析xml文件
-            root = tree.getroot()  # 获得对应的键值对
-            size = root.find('size')
-            img_w = int(size.find('width').text)
-            img_h = int(size.find('height').text)
-
-            labels = ''
-            for obj in root.iter('object'):
-                difficult = obj.find('difficult').text
-                cls = obj.find('name').text
-                # 如果类别不是对应在我们预定好的class文件中，或difficult==1则跳过
-                if cls not in classes or int(difficult) == 1:
-                    continue
-                # 通过类别名称找到id
-                class_id = classes.index(cls)
-
-                xml_box = obj.find('bndbox')
-                xyxy = [float(xml_box.find(key).text) for key in ['xmin', 'ymin', 'xmax', 'ymax']]
-                xywhn = xyxy2xywhn(xyxy, img_w, img_h)  # b_box转为(x,y,w,h)，并归一化
-                labels += f'{class_id} {" ".join([str(coord) for coord in xywhn])}\n'
-
-        except FileNotFoundError as e:  # 背景图
-            with open(f'{self.txt_label_path}/{img_id}.txt', 'w', encoding='utf-8') as txt_file:
-                return
-        except AttributeError as e:  # 忽略错误标注
-            return
-        else:
-            with open(f'{self.txt_label_path}/{img_id}.txt', 'w', encoding='utf-8') as txt_file:
-                txt_file.write(labels)  # class_id x y w h
-
-    def txt2xml(self, img_name, img_w, img_h, img_d, file_path, labeldicts):
-        # 创建Annotation根节点
-        root = ET.Element('annotation')
-        root.text = '\n\t'
-        root.tail = '\n'
-        # 创建folder子节点
-        folder = ET.SubElement(root, 'folder')
-        folder.text = 'images'
-        folder.tail = '\n\t'
-        # 创建filename子节点，无扩展名
-        filename = ET.SubElement(root, 'filename')
-        filename.text = str(img_name)
-        filename.tail = '\n\t'
-        # 创建path子节点
-        path = ET.SubElement(root, 'path')
-        path.text = str(file_path)
-        path.tail = '\n\t'
-        # 创建source子节点
-        source = ET.SubElement(root, 'source')
-        source.text = '\n\t\t'
-        source.tail = '\n\t'
-        database = ET.SubElement(source, 'database')
-        database.text = 'Unknown'
-        database.tail = '\n\t'
-
-        # 创建size子节点
-        sizes = ET.SubElement(root,'size')
-        sizes.text = '\n\t\t'
-        sizes.tail = '\n\t'
-        width = ET.SubElement(sizes, 'width')
-        width.text = str(img_w)
-        width.tail = '\n\t\t'
-        height = ET.SubElement(sizes, 'height')
-        height.text = str(img_h)
-        height.tail = '\n\t\t'
-        depth = ET.SubElement(sizes, 'depth')
-        depth.text = str(img_d)
-        depth.tail = '\n\t'
-
-        # 创建segmented子节点
-        segmented = ET.SubElement(root, 'segmented')
-        segmented.text = '0'
-        segmented.tail = '\n\t'
-
-        for labeldict in labeldicts:
-            # 创建object子节点
-            objects = ET.SubElement(root, 'object')
-            objects.text = '\n\t\t'
-            objects.tail = '\n'
-
-            name = ET.SubElement(objects, 'name')
-            name.text = labeldict['name']
-            name.tail = '\n\t\t'
-
-            pose = ET.SubElement(objects, 'pose')
-            pose.text = 'Unspecified'
-            pose.tail = '\n\t\t'
-
-            truncated = ET.SubElement(objects, 'truncated')  # 是否被截断，暂时设置为0
-            truncated.text = '0'
-            truncated.tail = '\n\t\t'
-
-            difficult = ET.SubElement(objects, 'difficult')
-            difficult.text = '0'
-            difficult.tail = '\n\t\t'
-
-            bndbox = ET.SubElement(objects,'bndbox')
-            bndbox.text = '\n\t\t\t'
-            bndbox.tail = '\n\t'
-
-            xmin = ET.SubElement(bndbox, 'xmin')
-            xmin.text = str(int(labeldict['xmin']))
-            xmin.tail = '\n\t\t\t'
-
-            ymin = ET.SubElement(bndbox, 'ymin')
-            ymin.text = str(int(labeldict['ymin']))
-            ymin.tail = '\n\t\t\t'
-
-            xmax = ET.SubElement(bndbox, 'xmax')
-            xmax.text = str(int(labeldict['xmax']))
-            xmax.tail = '\n\t\t\t'
-
-            ymax = ET.SubElement(bndbox, 'ymax')
-            ymax.text = str(int(labeldict['ymax']))
-            ymax.tail = '\n\t\t\t'
-        tree = ET.ElementTree(root)
-        tree.write(file_path, encoding='utf-8')
-
     def voc2yolo(self, classes):
         """voc数据集转yolo格式"""
 
-        print('开始转换数据集格式。。。')
+        print('开始voc转yolo。。。')
         with open(f'{self.dataset_path}/classes.txt', 'w', encoding='utf-8') as f:
             f.write('\n'.join(classes))  # 保存为yolo格式类别文件
 
-        os.makedirs(f'{self.dataset_path}/labels', exist_ok=True)
+        os.makedirs(self.txt_path, exist_ok=True)
+        xml_to_txt = partial(
+            xml2txt,
+            xml_label_path=self.xml_path,
+            txt_label_path=self.txt_path,
+            classes=classes
+            )
+
         imgs = os.listdir(self.image_path)
         for img in tqdm(imgs):
             img_id = os.path.splitext(img)[0]
-            self.xml2txt(img_id, classes)  # 生成labels文件夹下的txt
+            xml_to_txt(img_id)  # 生成labels文件夹下的txt
 
-    def yolo2voc(self):
+    def yolo2voc(self, classes):
         """yolo数据集转voc格式"""
+        print('开始yolo转voc。。。')
 
-        classes_txt = f'{self.dataset_path}/classes.txt'
-        with open(classes_txt, 'r') as f:
-            classes = f.readlines()
+        os.makedirs(self.xml_path, exist_ok=True)
+        txt_to_xml = partial(
+            txt2xml,
+            xml_label_path=self.xml_path,
+            txt_label_path=self.txt_path,
+            classes=classes
+            )
 
-        label_files = os.listdir(self.txt_label_path)
+        imgs = os.listdir(self.image_path)
+        for img in tqdm(imgs):
+            # im = cv2.imread(os.path.join(self.image_path, img))
+            # img_h, img_w, img_c = im.shape
 
-        for label_file in label_files:
-            img_name = os.path.splitext(label_file)[0]
-            try:
-                img = np.array(Image.open(f'{self.image_path}/{img_name}.jpg'))
-            except FileNotFoundError:
-                img = np.array(Image.open(f'{self.image_path}/{img_name}.png'))
-            img_h, img_w, img_d = img.shape[0], img.shape[1], img.shape[2]
+            img_w, img_h, img_c = get_image_info(os.path.join(self.image_path, img))
 
-            with open(f'{self.txt_label_path}/{label_file}', 'r') as f:
-                contents = f.readlines()
-            labeldicts = []
-            for content in contents:
-                content = content.strip('\n').split()
-                x = float(content[1])*img_w
-                y = float(content[2])*img_h
-                w = float(content[3])*img_w
-                h = float(content[4])*img_h
-
-                # 坐标的转换，x_center y_center width height -> xmin ymin xmax ymax
-                new_dict = {'name': classes[int(content[0])],
-                            'difficult': '0',
-                            'xmin': x-w/2,
-                            'ymin': y-h/2,
-                            'xmax': x+w/2,
-                            'ymax': y+h/2
-                            }
-                labeldicts.append(new_dict)
-            self.txt2xml(img_name, img_w, img_h, img_d, f'{self.xml_label_path}/{img_name}.xml', labeldicts)
+            img_id = os.path.splitext(img)[0]
+            txt_to_xml(img_id, img_w, img_h, img_c)
 
     def get_data(self, classes: list, file_data, annotation_type: str='voc', class_names=None) -> list:
         if annotation_type == 'voc': # xml文件中每个object标签的格式为：<object><name>类别名</name></object>
@@ -268,36 +144,28 @@ class Data_process:
         assert annotation_type in ['voc', 'yolo'], 'annotation_type must be voc or yolo'
 
         if annotation_type == 'voc':
-            annotation_path = self.xml_label_path
+            annotation_path = self.xml_path
             class_names = None
+            classes = []
+            file_list = os.listdir(annotation_path)  # 文件夹下所有文件的文件名列表
+            for file_name in file_list:
+                file_path = os.path.join(annotation_path, file_name)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    classes = self.get_data(classes, f, annotation_type, class_names)
         elif annotation_type == 'yolo':
-            annotation_path = self.txt_label_path
-            # class_names = None
-
-            # # 读取对应yaml文件中的类别名
-            # with open(os.path.join(self.dataset_path, f'{self.dataset_name}.yaml'), 'r', encoding='utf-8') as f:
-            #     class_names = yaml.load(f, Loader=yaml.FullLoader)['names']
-
-            # 读取对应yaml文件中的类别名
             with open(os.path.join(self.dataset_path, 'classes.txt'), 'r', encoding='utf-8') as f:
-                # class_names = yaml.load(f, Loader=yaml.FullLoader)['names']
-                class_names = f.readlines()
+                classes = f.readlines()
+            classes = [cls.strip('\n') for cls in classes]
 
-        classes = []
-        file_list = os.listdir(annotation_path)  # 文件夹下所有文件的文件名列表
-        for file_name in file_list:
-            file_path = os.path.join(annotation_path, file_name)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                classes = self.get_data(classes, f, annotation_type, class_names)
         return classes
 
     # 批量修改VOC数据集中xml的标签名称
     def change_xml_label(self, old_class, new_class):
-        file_names = os.listdir(self.xml_label_path)
+        file_names = os.listdir(self.xml_path)
         count = 0
         for file in file_names:
             if file.endswith('xml'):
-                file = os.path.join(self.xml_label_path, file)
+                file = os.path.join(self.xml_path, file)
                 tree = ET.parse(file)
                 root = tree.getroot()
                 for obj in root.iter('object'):
@@ -350,13 +218,13 @@ class Data_process:
     def data_formatting(self, train_ratio=0.7, val_ratio=0.2, seed=None, annotation_type='voc'):
         """数据格式化"""
 
-        self.data_divide(train_ratio=train_ratio, val_ratio=val_ratio, seed=seed)
         classes = self.get_labels(annotation_type=annotation_type)
         if annotation_type == 'voc':
             self.voc2yolo(classes)
         elif annotation_type == 'yolo':
-            self.yolo2voc()
+            self.yolo2voc(classes)
 
+        self.data_divide(train_ratio=train_ratio, val_ratio=val_ratio, seed=seed)
         self.create_yaml(classes)
         print(f'总共有{len(classes)}个类别：{classes}')
 
@@ -365,4 +233,9 @@ if __name__ == '__main__':
     dataset_path = 'datasets/detention'
 
     data_process = Data_process(dataset_path)
-    data_process.data_formatting(train_ratio=0.8, val_ratio=0.2, seed=0, annotation_type='voc')
+    data_process.data_formatting(
+        train_ratio=0.7,
+        val_ratio=0.2,
+        seed=0,
+        annotation_type='voc'
+        )
